@@ -22,14 +22,18 @@ npm run dev
 
 Open [Booyah](http://127.0.0.1:5173/) in Chrome or Edge. Each page load asks whether to enable head tracking. Choose **Enable head tracking** and allow camera access, or **Not now** to explore with the pointer. You can also dismiss the prompt with Escape and enable tracking later using the upper-right button. The camera is only requested after you choose to enable it. If the embedded browser does not show a camera prompt, use a regular browser.
 
-Sit centered and look straight ahead for the initial calibration (15 tracked frames). Lean gently left/right or up/down, or move closer/farther away. Use the **reset** icon at the lower right to return to the centered view and recalibrate while tracking. The adjacent **fullscreen** icon enters or exits fullscreen.
+Sit with your eyes centered in front of the visible scene and hold still for the initial calibration (15 tracked frames). Lean gently left/right or up/down, or move closer/farther away. Use the **reset** icon at the lower right to return to the centered view and recalibrate while tracking. The adjacent **fullscreen** icon enters or exits fullscreen.
+
+The display is the open face of a rectangular box extending 57 cm behind it. Opposing walls are parallel; the back wall has the same physical width and height as the opening. Its smaller apparent size comes entirely from perspective. Window frames are straight solids, and the window and plant keep their proportions when fitted into different viewport shapes.
 
 The four sliders below the tracking button control:
 
 - **Movement:** head or pointer movement sensitivity.
 - **Smoothing:** the balance between responsiveness and steadiness.
 - **Distance:** your eye-to-screen distance in centimeters. Changing it while tracking starts a new calibration.
-- **Screen width:** the measured physical width of the visible scene in centimeters.
+- **View width:** the measured physical width of the visible scene in centimeters, excluding browser sidebars.
+
+For the box to align with your real viewpoint, measure **View width** and eye-to-screen **Distance**, keep **Movement** at **1.0×**, then reset while centered. Recheck the visible width after changing the browser window or entering fullscreen. The defaults are 48 cm wide and 65 cm away; the browser cannot determine these physical measurements. Smoothing defaults to 20% to reduce the delay during movement.
 
 While the camera is running, a small mirrored live preview appears in the bottom-left corner, including in fullscreen. It shows the entire camera frame. Click **Disable head tracking** to release the camera and hide the preview. Connection and error messages appear briefly when needed.
 

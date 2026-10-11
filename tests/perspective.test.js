@@ -8,6 +8,24 @@ const closeTo = (actual, expected, tolerance = 1e-10) => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should equal ${expected}`);
 };
 
+// Project two physical pupils through a pinhole webcam. Keeping the camera
+// model separate from estimateEye catches mistakes when undoing perspective.
+function webcamSample({ x, y, z }, { width = 1280, height = 720, focalLength = 900 } = {}) {
+  const ipd = .063;
+  const project = pupilX => ({
+    x: .5 - focalLength * pupilX / z / width,
+    y: .5 - focalLength * y / z / height,
+  });
+  const left = project(x - ipd / 2);
+  const right = project(x + ipd / 2);
+  return {
+    centerX: (left.x + right.x) / 2,
+    centerY: (left.y + right.y) / 2,
+    eyeDistance: Math.hypot((left.x - right.x) * width, (left.y - right.y) * height) / width,
+    aspect: width / height,
+  };
+}
+
 test('screen corners stay fixed for translated viewpoints and different screen shapes', () => {
   const camera = new PerspectiveCamera(50, 1, 0.01, 10);
   for (const [width, height] of [[0.6, 0.3375], [0.3, 0.5]]) {
@@ -59,6 +77,41 @@ test('unmirrored camera displacement maps to physical screen axes and aspect rat
   const doubled = estimateEye(sample, baseline, { gain: 2 });
   closeTo(doubled.x, eye.x * 2);
   closeTo(doubled.y, eye.y * 2);
+});
+
+test('moving straight toward an off-center webcam does not introduce sideways or vertical drift', () => {
+  const calibratedPosition = { x: .08, y: -.12, z: .65 };
+  for (const dimensions of [{ width: 640, height: 480 }, { width: 1280, height: 720 }]) {
+    const reference = webcamSample(calibratedPosition, dimensions);
+    for (const z of [.35, .5, .85, 1.2]) {
+      const sample = webcamSample({ ...calibratedPosition, z }, dimensions);
+      const eye = estimateEye(sample, reference, { distance: calibratedPosition.z });
+      closeTo(eye.x, 0);
+      closeTo(eye.y, 0);
+      closeTo(eye.z, z);
+    }
+  }
+});
+
+test('combined physical translation is recovered across depth changes and gain settings', () => {
+  const calibratedPosition = { x: -.09, y: .1, z: .65 };
+  const reference = webcamSample(calibratedPosition);
+  for (const movement of [
+    { x: .06, y: -.04, z: -.15 },
+    { x: -.07, y: .03, z: .45 },
+  ]) {
+    const sample = webcamSample({
+      x: calibratedPosition.x + movement.x,
+      y: calibratedPosition.y + movement.y,
+      z: calibratedPosition.z + movement.z,
+    });
+    for (const gain of [0, .5, 1, 1.8]) {
+      const eye = estimateEye(sample, reference, { distance: calibratedPosition.z, gain });
+      closeTo(eye.x, movement.x * gain);
+      closeTo(eye.y, movement.y * gain);
+      closeTo(eye.z, calibratedPosition.z + movement.z * gain);
+    }
+  }
 });
 
 test('apparent face size changes depth and gain scales displacement from calibration', () => {

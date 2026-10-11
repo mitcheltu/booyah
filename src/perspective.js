@@ -39,9 +39,14 @@ export function estimateEye(sample, baseline, options = {}) {
   }
 
   const depth = clamp(distance * baseline.eyeDistance / sample.eyeDistance, 0.25, 1.5);
-  const metersPerImageWidth = ipd / sample.eyeDistance;
-  const x = (baseline.centerX - sample.centerX) * metersPerImageWidth * gain;
-  const y = (baseline.centerY - sample.centerY) * metersPerImageWidth / sample.aspect * gain;
+  // Unproject each eye midpoint at its own depth before subtracting the
+  // calibrated position. Subtracting image coordinates first would turn a
+  // straight approach into lateral motion when the webcam is off-center.
+  // The image center approximates the webcam's optical principal point.
+  const x = ipd * ((baseline.centerX - .5) / baseline.eyeDistance
+    - (sample.centerX - .5) / sample.eyeDistance) * gain;
+  const y = ipd * ((baseline.centerY - .5) / (baseline.eyeDistance * baseline.aspect)
+    - (sample.centerY - .5) / (sample.eyeDistance * sample.aspect)) * gain;
   const z = distance + (depth - distance) * gain;
 
   // Reject arithmetic overflow or degenerate measurements before they reach

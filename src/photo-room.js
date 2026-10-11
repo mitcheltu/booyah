@@ -61,8 +61,9 @@ export function createPhotoRoom({ project, texture, width = .48, height = width 
     const corners = [
       [left, top], [right, top], [right, bottom], [left, bottom],
     ];
-    const points = [depth, depth + thickness].flatMap(z =>
-      corners.flatMap(([x, y]) => project(x, y, z).toArray()));
+    const face = corners.map(([x, y]) => project(x, y, depth));
+    const points = [...face, ...face.map(p => new THREE.Vector3(p.x, p.y, p.z - thickness))]
+      .flatMap(p => p.toArray());
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
     geometry.setIndex([
@@ -86,14 +87,15 @@ export function createPhotoRoom({ project, texture, width = .48, height = width 
   // photo-shaped plane behind it. Off-axis projection therefore keeps every
   // seam anchored to a screen corner while its rear end moves with the eye.
   const depth = .57;
-  const rearScale = .82 * (.65 + depth) / .65;
   const front = [
     new THREE.Vector3(-width / 2, height / 2, 0),
     new THREE.Vector3(width / 2, height / 2, 0),
     new THREE.Vector3(width / 2, -height / 2, 0),
     new THREE.Vector3(-width / 2, -height / 2, 0),
   ];
-  const rear = front.map(p => new THREE.Vector3(p.x * rearScale, p.y * rearScale, -depth));
+  // Extrude the opening straight back. Enlarging the rear to fill more of the
+  // image makes a flared frustum, not a box, and disagrees with head parallax.
+  const rear = front.map(p => new THREE.Vector3(p.x, p.y, -depth));
   surface('Back wall', rear, wallMaterial, [728, 217, 832, 310]);
   surface('Ceiling', [front[0], front[1], rear[1], rear[0]], wallMaterial, [550, 58, 735, 126]);
   surface('Right wall', [front[1], front[2], rear[2], rear[1]], wallMaterial, [883, 300, 977, 534]);
@@ -144,13 +146,14 @@ export function createPhotoRoom({ project, texture, width = .48, height = width 
   function fitInsideRoom(group, padding) {
     group.updateMatrixWorld(true);
     let box = new THREE.Box3().setFromObject(group);
-    const closestDepth = Math.max(0, -box.max.z);
-    const sectionScale = THREE.MathUtils.lerp(1, rearScale, closestDepth / depth);
-    const halfWidth = width * sectionScale / 2 * (1 - padding);
-    const halfHeight = height * sectionScale / 2 * (1 - padding);
+    const halfWidth = width / 2 * (1 - padding);
+    const halfHeight = height / 2 * (1 - padding);
     const size = box.getSize(new THREE.Vector3());
-    group.scale.x = Math.min(1, halfWidth * 2 / size.x);
-    group.scale.y = Math.min(1, halfHeight * 2 / size.y);
+    const scale = Math.min(1, halfWidth * 2 / size.x, halfHeight * 2 / size.y);
+    // Uniformly resize around the rear-most point, preserving both proportions
+    // and the object's placement against the back wall as the viewport changes.
+    group.scale.setScalar(scale);
+    group.position.z = box.min.z * (1 - scale);
     group.updateMatrixWorld(true);
     box = new THREE.Box3().setFromObject(group);
     group.position.x += Math.max(0, -halfWidth - box.min.x) - Math.max(0, box.max.x - halfWidth);

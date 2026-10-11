@@ -118,23 +118,66 @@ test('room surfaces share every seam and have only the screen opening as a bound
   }
 });
 
+test('the room is a rectangular box with parallel walls and right-angle corners', () => {
+  for (const {width, height, aspect} of screenSizes) {
+    const room = roomForScreen(width, height);
+    const rear = room.getObjectByName('Back wall').geometry.attributes.position;
+    const camera = new THREE.PerspectiveCamera(45, aspect, .005, 15);
+    applyOffAxis(camera, width, height, {x:0,y:0,z:.65});
+    for (let i = 0; i < rear.count; i++) {
+      const p = new THREE.Vector3().fromBufferAttribute(rear, i);
+      assert.ok(Math.abs(Math.abs(p.x) - width / 2) < 1e-6);
+      assert.ok(Math.abs(Math.abs(p.y) - height / 2) < 1e-6);
+      const projected = p.clone().project(camera);
+      const expectedScale = .65 / (.65 - p.z);
+      assert.ok(Math.abs(projected.x - Math.sign(p.x) * expectedScale) < 1e-6);
+      assert.ok(Math.abs(projected.y - Math.sign(p.y) * expectedScale) < 1e-6);
+    }
+    for (const name of roomSurfaces) {
+      const vertices = room.getObjectByName(name).geometry.attributes.position;
+      const a = new THREE.Vector3().fromBufferAttribute(vertices, 0);
+      const b = new THREE.Vector3().fromBufferAttribute(vertices, 1);
+      const c = new THREE.Vector3().fromBufferAttribute(vertices, 2);
+      assert.ok(Math.abs(a.sub(b).normalize().dot(c.sub(b).normalize())) < 1e-6, name);
+    }
+  }
+});
+
+test('window beams have straight depth edges and decor keeps its proportions', () => {
+  for (const {width, height} of screenSizes) {
+    const room = roomForScreen(width, height);
+    for (const name of ['Window fitted inside the back wall', 'Dark leafy plant behind right shoulder']) {
+      const {x, y, z} = room.getObjectByName(name).scale;
+      assert.equal(x, y, name);
+      assert.equal(y, z, name);
+    }
+    room.getObjectByName('Window fitted inside the back wall').traverse(object => {
+      const p = object.geometry?.attributes.position;
+      if (!p || p.count !== 8) return;
+      for (let i = 0; i < 4; i++) {
+        assert.equal(p.getX(i), p.getX(i + 4), object.name);
+        assert.equal(p.getY(i), p.getY(i + 4), object.name);
+        assert.ok(p.getZ(i + 4) < p.getZ(i), object.name);
+      }
+    });
+  }
+});
+
 test('the window and plant stay within the room at portrait and landscape sizes', () => {
   for (const {width, height} of screenSizes) {
     const room = roomForScreen(width, height);
     room.updateMatrixWorld(true);
     const back = room.getObjectByName('Back wall').geometry.attributes.position;
     const depth = -back.getZ(0);
-    const rearScale = -back.getX(0) / (width / 2);
     for (const name of ['Window fitted inside the back wall', 'Dark leafy plant behind right shoulder']) {
       room.getObjectByName(name).traverse(object => {
         if (!object.isMesh) return;
         const position = object.geometry.attributes.position;
         for (let i = 0; i < position.count; i++) {
           const p = new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld);
-          const sectionScale = 1 + (rearScale - 1) * -p.z / depth;
           assert.ok(p.z >= -depth - 1e-6 && p.z < 0, object.name);
-          assert.ok(Math.abs(p.x) < width * sectionScale / 2, object.name);
-          assert.ok(Math.abs(p.y) < height * sectionScale / 2, object.name);
+          assert.ok(Math.abs(p.x) < width / 2, object.name);
+          assert.ok(Math.abs(p.y) < height / 2, object.name);
         }
       });
     }

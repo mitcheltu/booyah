@@ -4,7 +4,7 @@ import { FaceTracker } from './tracker.js';
 import { estimateEye } from './perspective.js';
 
 const $ = (id) => document.getElementById(id);
-const settings = { distance: .65, gain: 1, smoothing: 45, width: .48 };
+const settings = { distance: .65, gain: 1, smoothing: 20, width: .48 };
 let scene, baseline = null, latestSample = null, status = 'stopped', wantsCamera = false;
 let target = { x: 0, y: 0, z: .65 }, eye = { ...target };
 let calibrationSamples = [];
@@ -60,7 +60,7 @@ function beginCalibration() {
   baseline = null;
   calibrationSamples = [];
   target = { x: 0, y: 0, z: settings.distance };
-  message('Hold still and look straight ahead to recenter.', false, 5000);
+  message('Sit centered in front of the scene, then hold still to recenter.', false, 5000);
 }
 
 const tracker = new FaceTracker({
@@ -69,7 +69,7 @@ const tracker = new FaceTracker({
   onSample: (sample) => {
     latestSample = sample;
     if (!baseline) {
-      if (calibrationSamples.length === 0) message('Hold still and look straight ahead to recenter.');
+      if (calibrationSamples.length === 0) message('Sit centered in front of the scene, then hold still to recenter.');
       calibrationSamples.push(sample);
       if (calibrationSamples.length < 15) return;
       baseline = { ...sample };
