@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.sites-runtime/
+*.log
+qa/*
+!qa/*.html
+!qa/portrait.jpg
+.local/
+public/wasm/
+public/models/face_landmarker.task
+public/models/booyah-scene.glb

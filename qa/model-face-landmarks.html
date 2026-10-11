@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generated model — front face landmarks</title>
+  <style>
+    body { margin: 28px auto; padding: 0 24px; max-width: 1500px; background: #181b1f; color: #edf1f5; font: 15px/1.5 system-ui, sans-serif; }
+    h1 { margin-bottom: 8px; }
+    .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    figure { margin: 0; }
+    figcaption { margin: 12px 0 6px; }
+    canvas { display: block; width: 100%; height: auto; background: #808080; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #242a30; padding: 16px; }
+    #landmarks-json, #landmarks-model-xy-json { max-height: 360px; overflow: auto; }
+    a { color: #b5e0f4; }
+    [data-status="pass"] #status { color: #9fe6b0; }
+    [data-status="fail"] #status { color: #ffa8a8; }
+    @media (max-width: 850px) { .views { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-status="loading">
+  <h1>Generated model — front face landmarks</h1>
+  <p>Local GLB, front view from +Z, unlit original base color. No model rotation, translation, or scale is applied. Inference uses the clean render; the overlay is a separate canvas. No camera is requested.</p>
+  <p id="status" role="status">Loading the local generated model…</p>
+  <a id="download" hidden download="model-face-landmarks.json">Download normalized landmarks</a>
+  <pre id="report">Camera: orthographic, position [0,0,2], target [0,0,0], left/right/bottom/top = -0.55/0.55/-0.55/0.55. Render: 1024 × 1024.</pre>
+  <div class="views">
+    <figure><figcaption>Clean 1024 × 1024 model render</figcaption><canvas id="frame" width="1024" height="1024" aria-label="Unmodified orthographic front view of the generated model"></canvas></figure>
+    <figure><figcaption>Detected face landmarks</figcaption><canvas id="landmark-overlay" width="1024" height="1024" aria-label="Same render with detected face landmarks overlaid"></canvas></figure>
+  </div>
+  <h2>Normalized image coordinates</h2>
+  <pre id="landmarks-json">[]</pre>
+  <h2>Coordinates projected into the model's XY plane</h2>
+  <pre id="landmarks-model-xy-json">[]</pre>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { FaceTracker } from '/src/tracker.js';
+
+    const MODEL_URL = '/models/central-person.glb';
+    const SIZE = 1024;
+    const FRUSTUM = { left: -0.55, right: 0.55, bottom: -0.55, top: 0.55, near: 0.001, far: 10 };
+    const CAMERA_POSITION = [0, 0, 2];
+    const status = document.getElementById('status');
+    const report = document.getElementById('report');
+    const output = document.getElementById('landmarks-json');
+    const modelXYOutput = document.getElementById('landmarks-model-xy-json');
+    const canvas = document.getElementById('frame');
+    const overlay = document.getElementById('landmark-overlay');
+    const started = performance.now();
+    const cameraInfo = {
+      type: 'OrthographicCamera', position: CAMERA_POSITION, target: [0, 0, 0], up: [0, 1, 0],
+      ...FRUSTUM, zoom: 1,
+    };
+    const mapping = {
+      pixelX: 'u * 1024', pixelY: 'v * 1024',
+      modelX: '-0.55 + u * 1.1', modelY: '0.55 - v * 1.1',
+      unitsPerPixel: 1.1 / SIZE,
+      zNote: 'MediaPipe z is relative landmark depth in normalized image units, not model geometry Z. Recover actual model Z by raycasting along -Z at modelX/modelY.',
+    };
+    let renderer;
+    let landmarker;
+    let gltf;
+    let downloadUrl;
+    let bounds;
+    let meshes = 0;
+    try {
+      // Block accidental external texture/buffer references inside the GLB.
+      const manager = new THREE.LoadingManager();
+      manager.setURLModifier(url => {
+        if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+        const resolved = new URL(url, location.href);
+        if (resolved.origin !== location.origin) throw new Error('The model references a non-local asset.');
+        return url;
+      });
+      gltf = await new GLTFLoader(manager).loadAsync(MODEL_URL);
+      gltf.scene.updateMatrixWorld(true);
+      bounds = new THREE.Box3().setFromObject(gltf.scene);
+      gltf.scene.traverse(object => {
+        if (!object.isMesh) return;
+        meshes++;
+        const makeUnlit = material => new THREE.MeshBasicMaterial({
+          map: material.map ?? null,
+          color: material.color?.clone() ?? new THREE.Color(0xffffff),
+          side: THREE.DoubleSide,
+          transparent: material.transparent,
+          opacity: material.opacity,
+          alphaTest: material.alphaTest,
+          alphaMap: material.alphaMap,
+          vertexColors: material.vertexColors,
+          toneMapped: false,
+        });
+        object.material = Array.isArray(object.material) ? object.material.map(makeUnlit) : makeUnlit(object.material);
+        object.frustumCulled = false;
+      });
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x808080);
+      scene.add(gltf.scene);
+      const camera = new THREE.OrthographicCamera(FRUSTUM.left, FRUSTUM.right, FRUSTUM.top, FRUSTUM.bottom, FRUSTUM.near, FRUSTUM.far);
+      camera.position.fromArray(CAMERA_POSITION);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld(true);
+      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false });
+      renderer.setPixelRatio(1);
+      renderer.setSize(SIZE, SIZE, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.render(scene, camera);
+
+      // Separate 2D canvas also avoids sharing a WebGL context with MediaPipe.
+      const context = canvas.getContext('2d');
+      context.drawImage(renderer.domElement, 0, 0);
+      const overlayContext = overlay.getContext('2d');
+      overlayContext.drawImage(canvas, 0, 0);
+      status.textContent = 'Rendered the unchanged model. Loading the local face landmarker…';
+      const baseReport = {
+        source: MODEL_URL, width: SIZE, height: SIZE, camera: cameraInfo, mapping,
+        modelBounds: { min: bounds.min.toArray(), max: bounds.max.toArray() },
+        modelTransformApplied: false,
+        modelAuthoredRootMatrix: gltf.scene.matrix.toArray(),
+        meshes, rendering: 'Unlit original base-color textures; sRGB output; no tone mapping.',
+        cameraRequested: false,
+      };
+      report.textContent = JSON.stringify({ status: 'INFERENCE', ...baseReport }, null, 2);
+
+      const tracker = new FaceTracker({ video: document.createElement('video') });
+      landmarker = await tracker._loadLandmarker();
+      await new Promise(requestAnimationFrame);
+      const detection = landmarker.detectForVideo(canvas, performance.now());
+      const faceCount = detection.faceLandmarks?.length ?? 0;
+      if (!faceCount) throw new Error('No face detected in the model front render. The clean render and camera metadata are retained for inspection.');
+      const landmarks = detection.faceLandmarks[0].map(({ x, y, z }) => ({ x, y, z }));
+      if (landmarks.length !== 478 || !landmarks.every(point => Object.values(point).every(Number.isFinite))) {
+        throw new Error(`Expected 478 finite landmarks; received ${landmarks.length}.`);
+      }
+      const json = JSON.stringify(landmarks);
+      output.textContent = json;
+      modelXYOutput.textContent = JSON.stringify(landmarks.map(({ x, y, z }, index) => ({
+        index, pixelX: x * SIZE, pixelY: y * SIZE,
+        modelX: FRUSTUM.left + x * (FRUSTUM.right - FRUSTUM.left),
+        modelY: FRUSTUM.top - y * (FRUSTUM.top - FRUSTUM.bottom),
+        mediapipeRelativeZ: z,
+      })));
+      report.textContent = JSON.stringify({ status: 'PASS', ...baseReport, faceCount, landmarkCount: landmarks.length, elapsedMs: Math.round(performance.now() - started) }, null, 2);
+      downloadUrl = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const download = document.getElementById('download');
+      download.href = downloadUrl;
+      download.hidden = false;
+
+      overlayContext.fillStyle = 'rgba(90, 255, 180, 0.85)';
+      for (const { x, y } of landmarks) {
+        overlayContext.beginPath();
+        overlayContext.arc(x * SIZE, y * SIZE, 1.5, 0, Math.PI * 2);
+        overlayContext.fill();
+      }
+      for (const index of [1, 4, 33, 61, 133, 152, 168, 234, 263, 291, 362, 454]) {
+        const { x, y } = landmarks[index];
+        overlayContext.font = '12px system-ui';
+        overlayContext.fillStyle = '#fff1a0';
+        overlayContext.fillText(String(index), x * SIZE + 3, y * SIZE - 3);
+      }
+      document.body.dataset.status = 'pass';
+      status.textContent = `PASS — ${landmarks.length} landmarks from the +Z front view; exact model XY mapping included.`;
+    } catch (error) {
+      document.body.dataset.status = 'fail';
+      status.textContent = `FAIL — ${error.message}`;
+      report.textContent = JSON.stringify({
+        status: 'FAIL', message: error.message, source: MODEL_URL, width: SIZE, height: SIZE,
+        camera: cameraInfo, mapping, modelTransformApplied: false, cameraRequested: false,
+        modelBounds: bounds ? { min: bounds.min.toArray(), max: bounds.max.toArray() } : null,
+      }, null, 2);
+      console.error(error);
+    } finally {
+      landmarker?.close();
+      renderer?.dispose();
+    }
+    window.addEventListener('pagehide', () => {
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    });
+  </script>
+</body>
+</html>

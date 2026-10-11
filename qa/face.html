@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real-face landmark verification</title>
+  <style>
+    body { max-width: 820px; margin: 48px auto; padding: 0 24px; background: #101615; color: #e8ece7; font: 16px/1.6 system-ui, sans-serif; }
+    h1 { font-size: 26px; }
+    #status { padding: 16px; border: 1px solid #647b64; border-radius: 8px; }
+    [data-status="pass"] #status { color: #c6f7a8; }
+    [data-status="fail"] #status { color: #ffad9d; }
+    pre { padding: 16px; background: #1c2621; white-space: pre-wrap; overflow-wrap: anywhere; }
+    p { color: #aebbb2; }
+    canvas { display: block; width: min(100%, 640px); height: auto; margin-top: 20px; }
+    a { color: #c6f7a8; }
+  </style>
+</head>
+<body data-status="loading">
+  <h1>Real-face landmark verification</h1>
+  <p>This development fixture runs six VIDEO inferences on the <a href="https://storage.googleapis.com/mediapipe-assets/portrait.jpg">official MediaPipe test portrait</a>. It uses the application's local model and never requests a camera.</p>
+  <div id="status" role="status">RUNNING — loading the portrait and local face model…</div>
+  <pre id="result">Waiting for model initialization.</pre>
+  <canvas id="frame" width="640" height="480" aria-label="Test portrait with its original aspect ratio preserved"></canvas>
+  <script type="module">
+    import { FaceTracker } from '/src/tracker.js';
+
+    const status = document.getElementById('status');
+    const result = document.getElementById('result');
+    const started = performance.now();
+    const rounded = ms => Math.round(ms * 10) / 10;
+    let model;
+    try {
+      const portrait = new Image();
+      portrait.src = '/qa/portrait.jpg';
+      await portrait.decode();
+      const canvas = document.getElementById('frame');
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#808080';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const scale = Math.min(canvas.width / portrait.naturalWidth, canvas.height / portrait.naturalHeight);
+      const width = portrait.naturalWidth * scale;
+      const height = portrait.naturalHeight * scale;
+      context.drawImage(portrait, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+
+      const tracker = new FaceTracker({ video: document.createElement('video') });
+      const modelStart = performance.now();
+      model = await tracker._loadLandmarker();
+      const initialized = performance.now();
+      const inferenceTimings = [];
+      const frameResults = [];
+      for (let index = 0; index < 6; index++) {
+        status.textContent = `RUNNING — portrait inference ${index + 1} of 6…`;
+        await new Promise(requestAnimationFrame);
+        const inferenceStart = performance.now();
+        const detection = model.detectForVideo(canvas, inferenceStart);
+        inferenceTimings.push(performance.now() - inferenceStart);
+        const faceCount = detection.faceLandmarks?.length;
+        if (faceCount !== 1) {
+          throw new Error(`Frame ${index + 1}: expected exactly 1 face, received ${faceCount ?? 'no result'}.`);
+        }
+        const landmarks = detection.faceLandmarks[0];
+        if (landmarks.length !== 478) {
+          throw new Error(`Frame ${index + 1}: expected 478 landmarks, received ${landmarks.length}.`);
+        }
+        const leftIris = landmarks[468];
+        const rightIris = landmarks[473];
+        for (const [name, iris] of [['left', leftIris], ['right', rightIris]]) {
+          if (!iris || ![iris.x, iris.y, iris.z].every(Number.isFinite)) {
+            throw new Error(`Frame ${index + 1}: ${name} iris coordinates are not finite.`);
+          }
+        }
+        const eyeDistance = Math.hypot((leftIris.x - rightIris.x) * canvas.width, (leftIris.y - rightIris.y) * canvas.height) / canvas.width;
+        if (eyeDistance <= 0.005) {
+          throw new Error(`Frame ${index + 1}: iris distance is too small for tracking (${eyeDistance}).`);
+        }
+        frameResults.push({ frame: index + 1, faceCount, landmarkCount: landmarks.length, eyeDistance: Math.round(eyeDistance * 100000) / 100000 });
+        result.textContent = JSON.stringify({ completed: index + 1, total: 6, inferenceMs: inferenceTimings.map(rounded), frames: frameResults }, null, 2);
+      }
+      const finished = performance.now();
+      const steadyTimings = inferenceTimings.slice(1);
+      const steadyMean = steadyTimings.reduce((sum, ms) => sum + ms, 0) / steadyTimings.length;
+      model.close();
+      model = null;
+      const report = {
+        status: 'PASS',
+        model: '/models/face_landmarker.task',
+        wasm: '/wasm',
+        image: '/qa/portrait.jpg fitted into 640 × 480 canvas',
+        faceCount: 1,
+        landmarkCount: 478,
+        irisIndices: [468, 473],
+        irisCoordinatesFinite: true,
+        initializationMs: rounded(initialized - modelStart),
+        inferenceCount: inferenceTimings.length,
+        firstInferenceMs: rounded(inferenceTimings[0]),
+        steadyInferenceMs: steadyTimings.map(rounded),
+        steadyInferenceMeanMs: rounded(steadyMean),
+        totalMs: rounded(finished - started),
+        frames: frameResults,
+        cameraRequested: false,
+        modelClosed: true,
+      };
+      document.body.dataset.status = 'pass';
+      status.textContent = `PASS — 6 portrait inferences completed. 1 face / 478 landmarks / finite irises on every frame. Steady inference: ${steadyMean.toFixed(1)} ms mean.`;
+      result.textContent = JSON.stringify(report, null, 2);
+    } catch (error) {
+      document.body.dataset.status = 'fail';
+      status.textContent = `FAIL — ${error.message}`;
+      result.textContent = JSON.stringify({ status: 'FAIL', name: error.name, message: error.message, cause: error.cause?.message, stack: error.stack, elapsedMs: rounded(performance.now() - started), cameraRequested: false }, null, 2);
+      console.error(error);
+    } finally {
+      model?.close();
+    }
+  </script>
+</body>
+</html>

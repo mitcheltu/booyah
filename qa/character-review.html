@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Booyah — 360° character review</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #eceeec; color: #20262a; font: 14px/1.5 system-ui, sans-serif; }
+    header { padding: 18px 24px; background: #fff; border-bottom: 1px solid #d5d9d6; }
+    h1 { margin: 0 0 6px; font-size: 21px; font-weight: 650; }
+    p { margin: 6px 0; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 5px; }
+    button, .file-label { border: 1px solid #aeb7b1; border-radius: 5px; background: #fff; color: #24342a; padding: 7px 12px; font: inherit; cursor: pointer; }
+    button[aria-pressed="true"] { background: #254833; border-color: #254833; color: #fff; }
+    button:focus-visible, .file-label:focus-within { outline: 3px solid #3986c6; outline-offset: 2px; }
+    input[type="file"] { max-width: 255px; font: inherit; }
+    main { display: grid; grid-template-columns: minmax(260px, 34%) minmax(0, 1fr); gap: 18px; padding: 18px 24px; }
+    figure { margin: 0; background: #fff; border: 1px solid #cbd2cc; border-radius: 8px; overflow: hidden; }
+    figcaption { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #d8ddd9; }
+    #reference { display: block; width: 100%; height: min(64vh, 700px); object-fit: contain; background: #292b2d; }
+    #viewport { position: relative; height: min(64vh, 700px); min-height: 360px; background: #dce2de; }
+    #viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    #empty { position: absolute; top: 46%; left: 12%; width: 76%; text-align: center; color: #56635a; pointer-events: none; }
+    .hint { padding: 9px 14px; color: #5c6860; font-size: 13px; }
+    #status { margin-top: 12px; font-weight: 550; }
+    [data-status="error"] #status { color: #a12722; }
+    [data-status="ready"] #status { color: #255b35; }
+    .details { margin: 0 24px 24px; }
+    #state { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; background: #fff; border: 1px solid #cbd2cc; border-radius: 6px; font: 12px/1.55 ui-monospace, monospace; }
+    @media (max-width: 750px) {
+      header { padding: 15px; }
+      main { grid-template-columns: 1fr; padding: 15px; }
+      #reference { height: 36vh; }
+      #viewport { height: 62vh; }
+      .details { margin: 0 15px 15px; }
+    }
+  </style>
+</head>
+<body data-status="initializing" data-view="front" data-mode="textured" data-model="">
+  <header>
+    <h1>Booyah — 360° character review</h1>
+    <p>Compare the reference with the model from every side. Shaded and wireframe views reveal the actual surface geometry.</p>
+    <div class="toolbar">
+      <label class="file-label">Open local GLB <input id="model-file" type="file" accept=".glb,model/gltf-binary"></label>
+      <div class="buttons" role="group" aria-label="Camera direction">
+        <button type="button" data-view="front" aria-pressed="true">Front</button>
+        <button type="button" data-view="left" aria-pressed="false">Left</button>
+        <button type="button" data-view="right" aria-pressed="false">Right</button>
+        <button type="button" data-view="back" aria-pressed="false">Back</button>
+      </div>
+      <div class="buttons" role="group" aria-label="Surface display">
+        <button type="button" data-mode="textured" aria-pressed="true">Textured</button>
+        <button type="button" data-mode="shaded" aria-pressed="false">Shaded</button>
+        <button type="button" data-mode="wireframe" aria-pressed="false">Wireframe</button>
+      </div>
+      <button type="button" id="expand-review">Expand review</button>
+    </div>
+    <p id="status" role="status" aria-live="polite">Initializing the local viewer…</p>
+  </header>
+  <main>
+    <figure>
+      <figcaption>Original reference</figcaption>
+      <img id="reference" src="/reference/IMG_6660.PNG" alt="Original reference showing the central person in a navy shirt, with an indoor background.">
+      <div class="hint">The unseen sides and back must be inferred from the single reference photograph.</div>
+    </figure>
+    <figure>
+      <figcaption id="model-caption">3D model</figcaption>
+      <div id="viewport"><div id="empty">Choose a local .glb file to inspect the model.</div></div>
+      <div class="hint">Drag to orbit 360° · Scroll to zoom · Right-drag to pan · Front is the model’s +Z view.</div>
+    </figure>
+  </main>
+  <section class="details" aria-label="Review state">
+    <details open><summary>Model and viewer state</summary><pre id="state">Initializing…</pre></details>
+  </section>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { enhancePortraitFace } from '/src/portrait-texture.js';
+
+    const viewport = document.getElementById('viewport');
+    const status = document.getElementById('status');
+    const stateOutput = document.getElementById('state');
+    const fileInput = document.getElementById('model-file');
+    document.getElementById('expand-review').addEventListener('click', async () => {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    });
+    const state = {
+      status: 'initializing', model: null, view: 'front', mode: 'textured',
+      meshes: 0, triangles: 0, vertices: 0, originalBounds: null,
+      camera: null, error: null, externalResourcesBlocked: true, cameraRequested: false,
+    };
+    const originalMaterials = new Map();
+    const shadedMaterial = new THREE.MeshStandardMaterial({ color: 0xc6ccca, roughness: .72, metalness: 0 });
+    const wireframeMaterial = new THREE.MeshBasicMaterial({ color: 0x1e4937, wireframe: true, side: THREE.DoubleSide });
+    let renderer, controls, camera, scene, grid;
+    let modelRoot = null;
+    let fitDistance = 4;
+    let loadGeneration = 0;
+    let frame = 0;
+    let resizeObserver;
+
+    function publish() {
+      if (camera) state.camera = camera.position.toArray().map(value => Math.round(value * 10000) / 10000);
+      document.body.dataset.status = state.status;
+      document.body.dataset.view = state.view;
+      document.body.dataset.mode = state.mode;
+      document.body.dataset.model = state.model || '';
+      stateOutput.textContent = JSON.stringify(state, null, 2);
+    }
+    function setStatus(next, message, error = null) {
+      state.status = next;
+      state.error = error;
+      status.textContent = message;
+      publish();
+    }
+    function render() { if (renderer && scene && camera) renderer.render(scene, camera); }
+    function resize() {
+      const { width, height } = viewport.getBoundingClientRect();
+      if (!width || !height) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      render();
+    }
+    function setView(view) {
+      const directions = { front: [0, 0, 1], left: [-1, 0, 0], right: [1, 0, 0], back: [0, 0, -1] };
+      state.view = view;
+      controls.target.set(0, 0, 0);
+      camera.up.set(0, 1, 0);
+      camera.position.fromArray(directions[view]).multiplyScalar(fitDistance);
+      camera.lookAt(controls.target);
+      controls.update();
+      for (const button of document.querySelectorAll('button[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === view));
+      publish();
+      render();
+    }
+    function setMode(mode) {
+      state.mode = mode;
+      for (const [mesh, material] of originalMaterials) {
+        mesh.material = mode === 'textured' ? material : mode === 'shaded' ? shadedMaterial : wireframeMaterial;
+      }
+      for (const button of document.querySelectorAll('button[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+      publish();
+      render();
+    }
+    function disposeModel(root) {
+      if (!root) return;
+      const geometries = new Set(), materials = new Set(), textures = new Set();
+      root.traverse(object => {
+        if (object.geometry) geometries.add(object.geometry);
+        const source = originalMaterials.get(object) ?? object.material;
+        for (const material of (Array.isArray(source) ? source : [source])) {
+          if (!material || material === shadedMaterial || material === wireframeMaterial) continue;
+          materials.add(material);
+          for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+        }
+        originalMaterials.delete(object);
+      });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+      for (const texture of textures) texture.dispose();
+    }
+    async function parseModel(buffer, name, generation) {
+      let candidate;
+      try {
+        if (buffer.byteLength < 12 || new DataView(buffer).getUint32(0, true) !== 0x46546c67) throw new Error('This file is not a binary glTF (.glb) model.');
+        const manager = new THREE.LoadingManager();
+        const resourceErrors = [];
+        manager.onError = () => resourceErrors.push('An embedded model resource could not be loaded.');
+        manager.setURLModifier(url => {
+          if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+          const message = 'The GLB references external resources. Use a self-contained model.';
+          resourceErrors.push(message);
+          throw new Error(message);
+        });
+        const gltf = await new GLTFLoader(manager).parseAsync(buffer, '');
+        candidate = gltf.scene;
+        if(new URLSearchParams(location.search).get('portrait')==='1') {
+          const [photo,referencePoints,modelPoints]=await Promise.all([
+            new THREE.TextureLoader().loadAsync('/reference/IMG_6660.PNG'),
+            fetch('/reference/landmarks.json').then(r=>r.json()),
+            fetch('/reference/model-landmarks.json').then(r=>r.json()),
+          ]);
+          photo.colorSpace=THREE.SRGBColorSpace;
+          const enhancement=enhancePortraitFace(candidate,photo,referencePoints,modelPoints);
+          state.portraitEnhancement=enhancement.stats;
+        }
+        if (generation !== loadGeneration) { disposeModel(candidate); return; }
+        // GLTFLoader deliberately replaces failed image textures with null.
+        // Preserve those failures so a broken model cannot pass visual review.
+        if (resourceErrors.length) throw new Error(resourceErrors[0]);
+        candidate.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(candidate, true);
+        const size = box.getSize(new THREE.Vector3());
+        const extent = Math.max(size.x, size.y, size.z);
+        const bounds = [...box.min.toArray(), ...box.max.toArray()];
+        if (!bounds.every(Number.isFinite) || extent <= 0) throw new Error('The model contains no finite visible geometry.');
+        let meshes = 0, triangles = 0, vertices = 0;
+        candidate.traverse(object => {
+          if (!object.isMesh) return;
+          meshes++;
+          const position = object.geometry.attributes.position;
+          for (let i = 0; i < position.count; i++) {
+            if (![position.getX(i), position.getY(i), position.getZ(i)].every(Number.isFinite)) throw new Error('The model contains a nonfinite vertex.');
+          }
+          const instances = object.isInstancedMesh ? object.count : 1;
+          vertices += position.count * instances;
+          triangles += (object.geometry.index?.count ?? position.count) / 3 * instances;
+        });
+        if (!meshes) throw new Error('The GLB contains no triangle meshes to inspect.');
+        if (modelRoot) { scene.remove(modelRoot); disposeModel(modelRoot); }
+        const centering = new THREE.Group();
+        centering.position.copy(box.getCenter(new THREE.Vector3())).negate();
+        centering.add(candidate);
+        modelRoot = new THREE.Group();
+        modelRoot.add(centering);
+        modelRoot.scale.setScalar(2.5 / extent);
+        scene.add(modelRoot);
+        candidate.traverse(object => { if (object.isMesh) originalMaterials.set(object, object.material); });
+        const radius = size.length() / 2 * 2.5 / extent;
+        const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+        const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
+        fitDistance = radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2) * 1.1;
+        controls.minDistance = Math.max(.01, radius * .08);
+        controls.maxDistance = Math.max(30, fitDistance * 8);
+        grid.position.y = -size.y / 2 * 2.5 / extent - .012;
+        Object.assign(state, {
+          model: name, meshes, triangles: Math.round(triangles), vertices,
+          originalBounds: { min: box.min.toArray(), max: box.max.toArray() },
+          displayScale: 2.5 / extent,
+        });
+        document.getElementById('empty').hidden = true;
+        document.getElementById('model-caption').textContent = name;
+        setMode(state.mode);
+        setView('front');
+        setStatus('ready', `Loaded ${name} — ${meshes} meshes, ${Math.round(triangles).toLocaleString()} triangles. Inspect all four views.`);
+      } catch (error) {
+        if (candidate && candidate.parent?.parent !== modelRoot) disposeModel(candidate);
+        if (generation === loadGeneration) setStatus('error', `Could not load ${name}: ${error.message}`, error.message);
+      }
+    }
+    async function loadLocalFile(file) {
+      if (!file) return;
+      const generation = ++loadGeneration;
+      try {
+        if (!file.name.toLowerCase().endsWith('.glb')) throw new Error('Choose a self-contained .glb file.');
+        if (file.size > 200 * 1024 * 1024) throw new Error('Choose a GLB smaller than 200 MB.');
+        setStatus('loading', `Loading ${file.name} locally…`);
+        await parseModel(await file.arrayBuffer(), file.name, generation);
+      } catch (error) {
+        if (generation === loadGeneration) setStatus('error', error.message, error.message);
+      }
+    }
+    async function loadQueryModel(value) {
+      const generation = ++loadGeneration;
+      try {
+        if (/^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith('//')) throw new Error('The model query must be a relative same-origin URL.');
+        const url = new URL(value, location.href);
+        if (url.origin !== location.origin || !url.pathname.toLowerCase().endsWith('.glb')) throw new Error('The model query must point to a local .glb file.');
+        const name = decodeURIComponent(url.pathname.split('/').at(-1));
+        setStatus('loading', `Loading ${name} from this local server…`);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Local model request failed (${response.status}).`);
+        await parseModel(await response.arrayBuffer(), name, generation);
+      } catch (error) {
+        if (generation === loadGeneration) setStatus('error', error.message, error.message);
+      }
+    }
+
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setClearColor(0xdce2de);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      renderer.domElement.setAttribute('aria-label', 'Interactive 360 degree model viewer');
+      viewport.append(renderer.domElement);
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(38, 1, .001, 1000);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xa0aaa2, 2.2));
+      const key = new THREE.DirectionalLight(0xffffff, 2.7);
+      key.position.set(4, 6, 5); scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 1.8);
+      fill.position.set(-4, 2, -5); scene.add(fill);
+      grid = new THREE.GridHelper(12, 24, 0x8b9e91, 0xc0cdc3);
+      grid.position.y = -1.4;
+      grid.material.transparent = true;
+      grid.material.opacity = .42;
+      scene.add(grid);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.addEventListener('start', () => {
+        state.view = 'orbit';
+        for (const button of document.querySelectorAll('button[data-view]')) button.setAttribute('aria-pressed', 'false');
+        publish();
+      });
+      controls.addEventListener('change', () => { publish(); render(); });
+      for (const button of document.querySelectorAll('button[data-view]')) button.addEventListener('click', () => setView(button.dataset.view));
+      for (const button of document.querySelectorAll('button[data-mode]')) button.addEventListener('click', () => setMode(button.dataset.mode));
+      fileInput.addEventListener('change', () => loadLocalFile(fileInput.files[0]));
+      resizeObserver = new ResizeObserver(resize);
+      resizeObserver.observe(viewport);
+      resize();
+      setView('front');
+      setStatus('empty', 'Ready. Choose a local GLB to inspect; the file stays on this device.');
+      const requestedModel = new URLSearchParams(location.search).get('model');
+      if (requestedModel) await loadQueryModel(requestedModel);
+    } catch (error) {
+      setStatus('error', `Viewer could not start: ${error.message}`, error.message);
+    }
+    window.addEventListener('pagehide', () => {
+      ++loadGeneration;
+      cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      controls?.dispose();
+      disposeModel(modelRoot);
+      grid?.geometry.dispose();
+      grid?.material.dispose();
+      shadedMaterial.dispose();
+      wireframeMaterial.dispose();
+      renderer?.dispose();
+    });
+  </script>
+</body>
+</html>

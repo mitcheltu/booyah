@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reference portrait landmarks</title>
+  <style>
+    body { max-width: 1050px; margin: 32px auto; padding: 0 20px; background: #171a1d; color: #eef0f2; font: 15px/1.5 system-ui, sans-serif; }
+    canvas { display: block; width: min(100%, 850px); height: auto; margin: 20px 0; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #24292e; padding: 16px; }
+    #landmarks-json { max-height: 420px; overflow: auto; }
+    a { color: #b2dfef; }
+    [data-status="pass"] #status { color: #a5e5b0; }
+    [data-status="fail"] #status { color: #ffaaa5; }
+  </style>
+</head>
+<body data-status="loading">
+  <h1>Reference portrait landmarks</h1>
+  <p>Extracts the most prominent face from the local reference photograph. Coordinates stay normalized to the original image dimensions. No camera is requested.</p>
+  <p id="status" role="status">Loading the local reference and face model…</p>
+  <a id="download" hidden download="reference-landmarks.json">Download landmark JSON</a>
+  <pre id="report">Waiting for inference.</pre>
+  <canvas id="frame" aria-label="Reference photo with the detected face landmarks overlaid"></canvas>
+  <pre id="landmarks-json" aria-label="Full normalized face landmarks">[]</pre>
+  <script type="module">
+    import { FaceTracker } from '/src/tracker.js';
+
+    const status = document.getElementById('status');
+    const report = document.getElementById('report');
+    const output = document.getElementById('landmarks-json');
+    const canvas = document.getElementById('frame');
+    const started = performance.now();
+    let model;
+    let downloadUrl;
+    try {
+      const reference = new Image();
+      reference.src = '/reference/IMG_6660.PNG';
+      await reference.decode();
+      canvas.width = reference.naturalWidth;
+      canvas.height = reference.naturalHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(reference, 0, 0);
+
+      const tracker = new FaceTracker({ video: document.createElement('video') });
+      model = await tracker._loadLandmarker();
+      status.textContent = 'Extracting the reference face…';
+      await new Promise(requestAnimationFrame);
+      const detection = model.detectForVideo(canvas, performance.now());
+      const faceCount = detection.faceLandmarks?.length ?? 0;
+      if (!faceCount) throw new Error('No face was detected in the reference image.');
+      const landmarks = detection.faceLandmarks[0].map(({ x, y, z }) => ({ x, y, z }));
+      if (landmarks.length !== 478 || !landmarks.every(point => Object.values(point).every(Number.isFinite))) {
+        throw new Error(`Expected 478 finite face landmarks; received ${landmarks.length}.`);
+      }
+
+      const json = JSON.stringify(landmarks);
+      output.textContent = json;
+      const info = {
+        status: 'PASS',
+        source: reference.getAttribute('src'),
+        width: canvas.width,
+        height: canvas.height,
+        faceCount,
+        landmarkCount: landmarks.length,
+        coordinates: 'Normalized to the original image, without scaling, cropping, or padding.',
+        modelLimit: 'The application model is configured for the single most prominent face.',
+        elapsedMs: Math.round(performance.now() - started),
+        cameraRequested: false,
+      };
+      report.textContent = JSON.stringify(info, null, 2);
+      downloadUrl = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const download = document.getElementById('download');
+      download.href = downloadUrl;
+      download.hidden = false;
+
+      // Overlay only after inference so the source pixels remain unmodified.
+      context.fillStyle = 'rgba(100, 255, 195, 0.75)';
+      for (const { x, y } of landmarks) {
+        context.beginPath();
+        context.arc(x * canvas.width, y * canvas.height, 1.4, 0, Math.PI * 2);
+        context.fill();
+      }
+      document.body.dataset.status = 'pass';
+      status.textContent = `PASS — faceCount: ${faceCount}; ${landmarks.length} normalized landmarks extracted.`;
+    } catch (error) {
+      document.body.dataset.status = 'fail';
+      status.textContent = `FAIL — ${error.message}`;
+      report.textContent = JSON.stringify({ status: 'FAIL', message: error.message, cameraRequested: false }, null, 2);
+      console.error(error);
+    } finally {
+      model?.close();
+    }
+    window.addEventListener('pagehide', () => {
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    });
+  </script>
+</body>
+</html>

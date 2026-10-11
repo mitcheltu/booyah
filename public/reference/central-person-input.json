@@ -1,0 +1,7 @@
+{
+  "source": "IMG_6660.PNG supplied by the user",
+  "file": "central-person-input.png",
+  "method": "Built-in image_gen editing tool with transparent_background enabled",
+  "purpose": "Prepared input for a full volumetric reconstruction of the central person. This is an edited reference image, not a 3D model or an exact pixel-preserving extraction.",
+  "prompt": "Use case: background-extraction. Edit target: supplied photo IMG_6660.PNG. Asset type: transparent foreground input for a 3D reconstruction of the central person. Remove every background pixel, circular frame, room, plant, and the second person on the left. Retain ONLY the prominent central man with black middle-part hair and a dark navy crewneck t-shirt. Preserve his exact facial likeness, proportions, expression, hairstyle, pose, original photographic lighting, colors, shirt fabric, visible arms and hand. Do not beautify or stylize. Do not generate new facial features, body parts, or a different pose. Preserve the original visible waist-up silhouette including the bottom crop boundary. Keep all original subject detail and texture faithfully. Center the isolated person with a small transparent margin. Actual transparent alpha background. No text, pedestal, ground shadow, props, or other people."
+}

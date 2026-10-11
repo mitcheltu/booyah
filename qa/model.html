@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local GLB model diagnostic</title>
+  <style>
+    body { margin: 24px; background: #101615; color: #eff5eb; font: 16px/1.5 system-ui, sans-serif; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    #status { padding: 12px 16px; border: 1px solid #6e8172; border-radius: 6px; font-weight: 700; }
+    #status[data-result="pass"] { color: #c6f7a8; border-color: #91c778; }
+    #status[data-result="fail"] { color: #ffb5af; border-color: #d8756d; }
+    #scene { width: min(720px, 100%); height: 420px; margin-top: 20px; }
+    #scene canvas { display: block; width: 100%; height: 100%; }
+    li { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Self-contained GLB load and restore diagnostic</h1>
+  <p id="status" role="status" data-result="running">RUNNING — creating a triangle model in memory…</p>
+  <ul id="checks"></ul>
+  <div id="scene"></div>
+  <script type="module">
+    import { Box3, Vector3 } from 'three';
+    import { PerspectiveScene } from '/src/scene.js';
+
+    const status = document.getElementById('status');
+    const checks = document.getElementById('checks');
+    function check(condition, description) {
+      const item = document.createElement('li');
+      item.textContent = `${condition ? 'PASS' : 'FAIL'} — ${description}`;
+      checks.append(item);
+      if (!condition) throw new Error(description);
+    }
+
+    // A valid GLB v2 containing one translated triangle, with embedded vertex
+    // and index data. Padding is included in both aligned GLB chunks.
+    function triangleFile({ externalTexture = false } = {}) {
+      const binary = new ArrayBuffer(44);
+      new Float32Array(binary, 0, 9).set([-1, -1, 0, 1, -1, 0, 0, 1, 0]);
+      new Uint16Array(binary, 36, 3).set([0, 1, 2]);
+      const document = {
+        asset: { version: '2.0', generator: 'Parallax local diagnostic' },
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        nodes: [{ mesh: 0, translation: [7, 2, -1] }],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 0 }] }],
+        materials: [{ doubleSided: true, pbrMetallicRoughness: {
+          baseColorFactor: [0.6, 0.85, 0.4, 1], metallicFactor: 0, roughnessFactor: 0.8,
+        } }],
+        buffers: [{ byteLength: 44 }],
+        bufferViews: [
+          { buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 },
+          { buffer: 0, byteOffset: 36, byteLength: 6, target: 34963 },
+        ],
+        accessors: [
+          { bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [-1, -1, 0], max: [1, 1, 0] },
+          { bufferView: 1, componentType: 5123, count: 3, type: 'SCALAR', min: [0], max: [2] },
+        ],
+      };
+      if (externalTexture) {
+        document.images = [{ uri: 'https://example.invalid/texture.png' }];
+        document.textures = [{ source: 0 }];
+        document.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
+      }
+      const json = new TextEncoder().encode(JSON.stringify(document));
+      const jsonLength = Math.ceil(json.byteLength / 4) * 4;
+      const buffer = new ArrayBuffer(12 + 8 + jsonLength + 8 + binary.byteLength);
+      const data = new DataView(buffer);
+      data.setUint32(0, 0x46546c67, true);
+      data.setUint32(4, 2, true);
+      data.setUint32(8, buffer.byteLength, true);
+      data.setUint32(12, jsonLength, true);
+      data.setUint32(16, 0x4e4f534a, true);
+      new Uint8Array(buffer, 20, jsonLength).fill(0x20);
+      new Uint8Array(buffer, 20, json.byteLength).set(json);
+      const binaryOffset = 20 + jsonLength;
+      data.setUint32(binaryOffset, binary.byteLength, true);
+      data.setUint32(binaryOffset + 4, 0x004e4942, true);
+      new Uint8Array(buffer, binaryOffset + 8).set(new Uint8Array(binary));
+      return new File([buffer], externalTexture ? 'diagnostic-external-texture.glb' : 'diagnostic-triangle.glb', { type: 'model/gltf-binary' });
+    }
+
+    try {
+      const view = new PerspectiveScene(document.getElementById('scene'));
+      check(view.placeholder.visible, 'Study object is initially visible.');
+      await view.loadModel(triangleFile());
+      view.render();
+      check(!view.placeholder.visible, 'Loading the GLB hides the study object.');
+      check(view.loadedModel?.parent === view.content, 'Loaded model is attached to the scene content.');
+      const box = new Box3().setFromObject(view.loadedModel);
+      const size = box.getSize(new Vector3());
+      const center = box.getCenter(new Vector3());
+      check(!box.isEmpty() && Math.max(size.x, size.y, size.z) > 0, 'Loaded model has nonempty geometry bounds.');
+      check(center.distanceTo(view.content.position) < 1e-6, 'Translated source geometry is centered in the viewing volume.');
+      const expectedExtent = 0.23 * view.content.scale.x;
+      check(Math.abs(Math.max(size.x, size.y, size.z) - expectedExtent) < 1e-6, 'Imported geometry is normalized to the intended scene size.');
+      const importedModel = view.loadedModel;
+      let externalTextureError = null;
+      try {
+        await view.loadModel(triangleFile({ externalTexture: true }));
+      } catch (error) {
+        externalTextureError = error;
+      }
+      check(externalTextureError?.message.includes('external files'), 'A GLB referencing an external texture is rejected.');
+      check(view.loadedModel === importedModel && importedModel.parent === view.content && !view.placeholder.visible,
+        'Rejected imports preserve the previously loaded model.');
+      view.restoreModel();
+      view.render();
+      check(view.loadedModel === null && importedModel.parent === null, 'Restore removes the imported model.');
+      check(view.placeholder.visible, 'Restore makes the study object visible again.');
+      status.dataset.result = 'pass';
+      status.textContent = 'PASS — all 10 GLB load, fitting, external-resource rejection, and restore checks passed.';
+    } catch (error) {
+      status.dataset.result = 'fail';
+      status.textContent = `FAIL — ${error.message}`;
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

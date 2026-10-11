@@ -1,0 +1,158 @@
+{
+  "title": "Booyah central person — generated volumetric character",
+  "source": {
+    "service": "Microsoft TRELLIS.2 on Hugging Face",
+    "input": "../reference/central-person-input.png",
+    "inputProvenance": "../reference/central-person-input.json",
+    "originalReference": "../reference/IMG_6660.PNG",
+    "seed": 800915613,
+    "resolution": 1536,
+    "textureResolution": 4096
+  },
+  "metrics": {
+    "file": "central-person.glb",
+    "bytes": 10922524,
+    "sha256": "d2e0c4e9c7e6f2c9d1e09624f95c540e39386cd04e9007936947fc7d3cfd03f5",
+    "meshCount": 1,
+    "materialCount": 1,
+    "vertices": 169535,
+    "triangles": 279958,
+    "attributesFinite": true,
+    "indexed": true,
+    "hasNormals": true,
+    "hasUVs": true,
+    "bounds": {
+      "min": [
+        -0.45304927229881287,
+        -0.4994167685508728,
+        -0.2828407883644104
+      ],
+      "max": [
+        0.4330863952636719,
+        0.4981324076652527,
+        0.2822374105453491
+      ],
+      "size": [
+        0.8861356675624847,
+        0.9975491762161255,
+        0.5650781989097595
+      ]
+    },
+    "depthToHeightRatio": 0.5664665085015635,
+    "minToMaxExtentRatio": 0.5664665085015635,
+    "signedVolume": 0.002544428318731861,
+    "absoluteVolume": 0.002544428318731861,
+    "surfaceArea": 3.8999467672743333,
+    "normalLength": {
+      "min": 0.999999950494138,
+      "max": 1.000000050004577
+    },
+    "depthProbes": [
+      {
+        "label": "torso",
+        "x": 0,
+        "y": -0.35,
+        "intersectionCount": 4,
+        "zIntersections": [
+          -0.24485480857018904,
+          -0.24354688398221327,
+          0.1346390850626093,
+          0.1359420511406009
+        ],
+        "outerSurfaceSpan": 0.3807968597107899,
+        "pairedIntervalSum": 0.002610890665967369
+      },
+      {
+        "label": "head",
+        "x": 0,
+        "y": 0.25,
+        "intersectionCount": 4,
+        "zIntersections": [
+          -0.18102840153260097,
+          -0.17957621152347544,
+          0.17798425827989772,
+          0.18049485790480094
+        ],
+        "outerSurfaceSpan": 0.36152325943740193,
+        "pairedIntervalSum": 0.0039627896340287405
+      }
+    ],
+    "uvBounds": {
+      "min": [
+        0,
+        0
+      ],
+      "max": [
+        0.9995861053466797,
+        0.9995784163475037
+      ]
+    },
+    "topology": {
+      "weldTolerance": 0.000001,
+      "weldedVertices": 139931,
+      "edges": 419925,
+      "connectedComponents": 3,
+      "componentTriangles": [
+        279864,
+        72,
+        22
+      ],
+      "largestComponentFraction": 0.9996642353495881,
+      "boundaryEdges": 0,
+      "nonManifoldEdges": 12,
+      "inconsistentWindingEdges": 0,
+      "degenerateTriangles": 0,
+      "watertightAfterWelding": false
+    },
+    "images": [
+      {
+        "index": 0,
+        "mimeType": "image/webp",
+        "bytes": 1750168,
+        "width": 4096,
+        "height": 4096
+      },
+      {
+        "index": 1,
+        "mimeType": "image/webp",
+        "bytes": 385804,
+        "width": 4096,
+        "height": 4096
+      }
+    ],
+    "materials": [
+      {
+        "pbrMetallicRoughness": {
+          "baseColorTexture": {
+            "index": 0
+          },
+          "baseColorFactor": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "roughnessFactor": 1,
+          "metallicFactor": 1,
+          "metallicRoughnessTexture": {
+            "index": 1
+          }
+        },
+        "alphaMode": "OPAQUE",
+        "doubleSided": false
+      }
+    ],
+    "extensionsRequired": [
+      "EXT_texture_webp"
+    ],
+    "externalResources": false
+  },
+  "limitations": [
+    "A single front photograph cannot establish the true shape or appearance of unseen sides and back; these are generated estimates.",
+    "The input was an image_gen edited transparent subject image, not an exact pixel-preserving extraction.",
+    "Finite attributes, depth, volume, and topology checks confirm volumetric geometry; they do not establish photorealism or exact facial likeness.",
+    "The mesh is a hollow thin-walled surface: enclosed shell-material volume is much smaller than the full outer body volume.",
+    "After welding UV seams, no boundary edges were detected, but 12 non-manifold edges and two tiny disconnected components remain. This is not certified as a watertight printable solid.",
+    "Bounds and topology are reported in raw asset coordinates. Front-view orientation must be checked visually."
+  ]
+}
