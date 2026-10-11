@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * wall/ceiling patches are sampled: the original people never appear behind
  * their foreground meshes when the viewer moves.
  */
-export function createPhotoRoom({ project, texture }) {
+export function createPhotoRoom({ project, texture, width = .48, height = width / (16 / 9) }) {
   const room = new THREE.Group();
   room.name = 'Photo room — walls, window, and plant';
   const matte = (color, extra = {}) => new THREE.MeshStandardMaterial({
@@ -22,8 +22,9 @@ export function createPhotoRoom({ project, texture }) {
   const glassMaterial = new THREE.MeshBasicMaterial({ color: 0x1d1e21, side: THREE.DoubleSide });
   const shadowMaterial = matte(0x676965);
 
-  function quad(name, corners, material, patch) {
-    const points = corners.map(([x, y, depth]) => project(x, y, depth));
+  let surfaceGroup = room;
+
+  function surface(name, points, material, patch) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flatMap(p => p.toArray()), 3));
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
@@ -40,8 +41,12 @@ export function createPhotoRoom({ project, texture }) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = name;
     mesh.receiveShadow = true;
-    room.add(mesh);
+    surfaceGroup.add(mesh);
     return mesh;
+  }
+
+  function quad(name, corners, material, patch) {
+    return surface(name, corners.map(([x, y, depth]) => project(x, y, depth)), material, patch);
   }
 
   function rectangle(name, left, top, right, bottom, depth, material, patch) {
@@ -73,42 +78,56 @@ export function createPhotoRoom({ project, texture }) {
     mesh.name = name;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    room.add(mesh);
+    surfaceGroup.add(mesh);
     return mesh;
   }
 
-  // Extend the architecture outside the circular photo crop so it fills every
-  // aspect ratio. The visible vertical corner remains at the reference x=847.
-  rectangle('Back wall', -4000, 184, 850, 4000, 0.57, wallMaterial, [728, 217, 832, 310]);
-  quad('Ceiling', [
-    [-4000, -4000, 0.16], [4000, -650, 0.19],
-    [847, 198, 0.57], [-4000, 183, 0.57],
-  ], wallMaterial, [550, 58, 735, 126]);
-  quad('Right wall', [
-    [847, 198, 0.57], [4000, -650, 0.19],
-    [4000, 4000, 0.19], [847, 4000, 0.57],
-  ], wallMaterial, [883, 300, 977, 534]);
+  // These four shared opening vertices are on the physical display, not on a
+  // photo-shaped plane behind it. Off-axis projection therefore keeps every
+  // seam anchored to a screen corner while its rear end moves with the eye.
+  const depth = .57;
+  const rearScale = .82 * (.65 + depth) / .65;
+  const front = [
+    new THREE.Vector3(-width / 2, height / 2, 0),
+    new THREE.Vector3(width / 2, height / 2, 0),
+    new THREE.Vector3(width / 2, -height / 2, 0),
+    new THREE.Vector3(-width / 2, -height / 2, 0),
+  ];
+  const rear = front.map(p => new THREE.Vector3(p.x * rearScale, p.y * rearScale, -depth));
+  surface('Back wall', rear, wallMaterial, [728, 217, 832, 310]);
+  surface('Ceiling', [front[0], front[1], rear[1], rear[0]], wallMaterial, [550, 58, 735, 126]);
+  surface('Right wall', [front[1], front[2], rear[2], rear[1]], wallMaterial, [883, 300, 977, 534]);
+  const leftWallMaterial = wallMaterial.clone();
+  leftWallMaterial.color.set(0xc4c4c4);
+  surface('Left wall', [front[3], front[0], rear[0], rear[3]], leftWallMaterial, [728, 217, 832, 310]);
+  const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x646360, side: THREE.DoubleSide });
+  surface('Floor', [front[2], front[3], rear[3], rear[2]], floorMaterial);
+
+  const window = new THREE.Group();
+  window.name = 'Window fitted inside the back wall';
+  room.add(window);
+  surfaceGroup = window;
 
   // The reference is a night interior with broad painted double-door frames.
-  rectangle('Window recess', 195, 319, 776, 1650, 0.547, shadowMaterial);
-  rectangle('Left glass pane', 219, 347, 411, 1630, 0.536, glassMaterial);
-  rectangle('Right glass pane', 428, 358, 747, 1630, 0.536, glassMaterial);
-  beam('Door outer left reveal', 194, 319, 215, 1650, 0.507, 0.04, frameEdgeMaterial);
-  beam('Door outer right reveal', 754, 331, 776, 1650, 0.507, 0.04, frameEdgeMaterial);
+  rectangle('Window recess', 195, 319, 776, 760, 0.547, shadowMaterial);
+  rectangle('Left glass pane', 219, 347, 411, 750, 0.536, glassMaterial);
+  rectangle('Right glass pane', 428, 358, 747, 750, 0.536, glassMaterial);
+  beam('Door outer left reveal', 194, 319, 215, 760, 0.507, 0.04, frameEdgeMaterial);
+  beam('Door outer right reveal', 754, 331, 776, 760, 0.507, 0.04, frameEdgeMaterial);
   beam('Door top reveal', 194, 319, 776, 339, 0.507, 0.04, frameEdgeMaterial);
-  beam('Door left jamb', 207, 337, 231, 1650, 0.493, 0.044);
+  beam('Door left jamb', 207, 337, 231, 760, 0.493, 0.044);
   beam('Door top rail', 210, 337, 760, 367, 0.49, 0.047);
-  beam('Door center mullion', 395, 343, 429, 1650, 0.489, 0.047);
-  beam('Door right jamb', 724, 350, 759, 1650, 0.493, 0.043);
-  beam('Left frame inner lip', 230, 366, 237, 1650, 0.509, 0.021, frameEdgeMaterial);
-  beam('Right frame inner lip', 716, 367, 725, 1650, 0.509, 0.021, frameEdgeMaterial);
+  beam('Door center mullion', 395, 343, 429, 760, 0.489, 0.047);
+  beam('Door right jamb', 724, 350, 759, 760, 0.493, 0.043);
+  beam('Left frame inner lip', 230, 366, 237, 760, 0.509, 0.021, frameEdgeMaterial);
+  beam('Right frame inner lip', 716, 367, 725, 760, 0.509, 0.021, frameEdgeMaterial);
 
   // Muted reflected strips and tiny distant lights retain the dark window's
   // character without introducing a second copy of either photographed person.
   const reflection = new THREE.MeshBasicMaterial({ color: 0x73858b, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false });
   const softReflection = new THREE.MeshBasicMaterial({ color: 0x688896, transparent: true, opacity: 0.075, side: THREE.DoubleSide, depthWrite: false });
   quad('Left glass reflection', [[341, 369, 0.531], [363, 369, 0.531], [390, 743, 0.531], [353, 743, 0.531]], reflection);
-  quad('Broad window reflection', [[449, 369, 0.53], [490, 369, 0.53], [480, 794, 0.53], [438, 794, 0.53]], softReflection);
+  quad('Broad window reflection', [[449, 369, 0.53], [490, 369, 0.53], [480, 743, 0.53], [438, 743, 0.53]], softReflection);
   const lightMaterial = new THREE.MeshBasicMaterial({ color: 0xffd897 });
   for (const [x, y, radius] of [[299, 462, 2.8], [339, 461, 1.8], [380, 466, 2.4], [421, 465, 1.8]]) {
     const center = project(x, y, 0.529);
@@ -116,8 +135,28 @@ export function createPhotoRoom({ project, texture }) {
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 6), lightMaterial);
     bulb.name = 'Distant warm window light';
     bulb.position.copy(center);
-    room.add(bulb);
+    window.add(bulb);
   }
+
+  // The old photo continued beyond the viewport. Keep its window and plant
+  // inside the new room, including narrow portrait layouts, without moving
+  // the person or changing their proportions.
+  function fitInsideRoom(group, padding) {
+    group.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(group);
+    const closestDepth = Math.max(0, -box.max.z);
+    const sectionScale = THREE.MathUtils.lerp(1, rearScale, closestDepth / depth);
+    const halfWidth = width * sectionScale / 2 * (1 - padding);
+    const halfHeight = height * sectionScale / 2 * (1 - padding);
+    const size = box.getSize(new THREE.Vector3());
+    group.scale.x = Math.min(1, halfWidth * 2 / size.x);
+    group.scale.y = Math.min(1, halfHeight * 2 / size.y);
+    group.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(group);
+    group.position.x += Math.max(0, -halfWidth - box.min.x) - Math.max(0, box.max.x - halfWidth);
+    group.position.y += Math.max(0, -halfHeight - box.min.y) - Math.max(0, box.max.y - halfHeight);
+  }
+  fitInsideRoom(window, .07);
 
   const plant = new THREE.Group();
   plant.name = 'Dark leafy plant behind right shoulder';
@@ -185,6 +224,7 @@ export function createPhotoRoom({ project, texture }) {
     [[788, 599, 0.367], [753, 548, 0.346], 9, 3],
   ];
   leaves.forEach(([base, tip, width, bend], i) => leaf(base, tip, width, bend, i));
+  fitInsideRoom(plant, .04);
 
   return room;
 }

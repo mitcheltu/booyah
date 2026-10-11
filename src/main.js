@@ -83,8 +83,8 @@ const tracker = new FaceTracker({
   },
 });
 
-$('camera-toggle').addEventListener('click', async () => {
-  if (wantsCamera) { tracker.stop(); return; }
+async function startTracking() {
+  if (wantsCamera) return;
   wantsCamera = true;
   baseline = null;
   latestSample = null;
@@ -96,7 +96,21 @@ $('camera-toggle').addEventListener('click', async () => {
   }, 8000);
   await tracker.start();
   clearTimeout(permissionHint);
+}
+
+$('camera-toggle').addEventListener('click', () => {
+  if (wantsCamera) tracker.stop();
+  else startTracking();
 });
+
+const trackingPrompt = $('tracking-prompt');
+$('prompt-enable').addEventListener('click', () => {
+  trackingPrompt.close();
+  startTracking();
+});
+$('prompt-skip').addEventListener('click', () => trackingPrompt.close());
+trackingPrompt.addEventListener('close', () => $('camera-toggle').focus({ preventScroll: true }));
+if (scene) trackingPrompt.showModal();
 
 $('reset-view').addEventListener('click', () => {
   target = { x: 0, y: 0, z: settings.distance };

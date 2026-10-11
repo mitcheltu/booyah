@@ -95,7 +95,7 @@ export class PerspectiveScene {
       return new THREE.Vector3((x-620)*pixelScale*perspectiveScale,
         (455-y)*pixelScale*perspectiveScale,-depth);
     };
-    this.room=createPhotoRoom({project,texture:this.photoTexture});
+    this.room=createPhotoRoom({project,texture:this.photoTexture,width:this.width,height:this.height});
     this.placeholder=createPhotoSubjects({project,texture:this.photoTexture,
       landmarks:this.landmarks,pixelScale,includeForeground:!this.centralPersonModel});
     this.placeholder.visible=wasVisible;

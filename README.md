@@ -2,7 +2,7 @@
 
 A browser-native scene that changes its perspective as you move your head. Camera frames are processed on the device with MediaPipe Face Landmarker. Three.js renders a fixed screen aperture using an off-axis projection, creating motion parallax for one viewer.
 
-The default scene now contains a **volumetric 3D model of the central person**, with front, side, and back geometry generated using Microsoft TRELLIS.2. The room has separate reconstructed walls, window frames, glass, and plant geometry; the secondary person remains a photo relief. The page title is **Booyah**, and the scene fills the screen with only the tracking button, sliders, reset, and fullscreen controls.
+The default scene now contains a **volumetric 3D model of the central person**, with front, side, and back geometry generated using Microsoft TRELLIS.2. The room has separate reconstructed walls, window frames, glass, and plant geometry; the secondary person remains a photo relief. The room's opening is fixed to the four screen corners, with walls, ceiling, and floor receding behind it. It adapts to resizing and fullscreen. The page title is **Booyah**, and the scene fills the screen with the tracking button, sliders, camera preview, reset, and fullscreen controls.
 
 The original `IMG_6660.PNG` is retained. At runtime, `src/portrait-texture.js` projects its face onto the front facial surface using 24 stable anchors from matching 478-point landmark sets. This improves the front likeness while the sides and back retain generated textures. The projection is fixed to the model as the viewer moves. It is an application material effect, **not baked into the downloadable GLB**.
 
@@ -20,7 +20,7 @@ npm run setup:assets
 npm run dev
 ```
 
-Open [Booyah](http://127.0.0.1:5173/) in Chrome or Edge. The scene fills the viewport. Click **Enable head tracking** at the upper right and allow camera access. If the embedded browser does not show a camera prompt, use a regular browser. The application also supports a pointer preview without a camera.
+Open [Booyah](http://127.0.0.1:5173/) in Chrome or Edge. Each page load asks whether to enable head tracking. Choose **Enable head tracking** and allow camera access, or **Not now** to explore with the pointer. You can also dismiss the prompt with Escape and enable tracking later using the upper-right button. The camera is only requested after you choose to enable it. If the embedded browser does not show a camera prompt, use a regular browser.
 
 Sit centered and look straight ahead for the initial calibration (15 tracked frames). Lean gently left/right or up/down, or move closer/farther away. Use the **reset** icon at the lower right to return to the centered view and recalibrate while tracking. The adjacent **fullscreen** icon enters or exits fullscreen.
 

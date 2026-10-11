@@ -33,6 +33,14 @@
     <div id="camera-preview" class="camera-preview" hidden>
       <video id="webcam" class="tracking-video" autoplay playsinline muted aria-label="Live camera preview" tabindex="-1"></video>
     </div>
+    <dialog id="tracking-prompt" class="tracking-prompt" aria-labelledby="tracking-prompt-title" aria-describedby="tracking-prompt-description">
+      <h1 id="tracking-prompt-title">Enable head tracking?</h1>
+      <p id="tracking-prompt-description">Move your head to look around the room. Your camera feed stays on your device.</p>
+      <div class="prompt-actions">
+        <button id="prompt-enable" class="prompt-enable" type="button" autofocus>Enable head tracking</button>
+        <button id="prompt-skip" class="prompt-skip" type="button">Not now</button>
+      </div>
+    </dialog>
     <input id="model-file" type="file" accept=".glb" hidden />
   </main>
   <script type="module" src="/src/main.js"></script>
