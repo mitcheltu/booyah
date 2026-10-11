@@ -6,7 +6,7 @@ import { createPhotoSubjects } from './photo-subjects.js';
 import { enhancePortraitFace } from './portrait-texture.js';
 
 export class PerspectiveScene {
-  constructor(element, { centralModelUrl = null, enhanceFace = false } = {}) {
+  constructor(element, { centralModelUrl = null, enhanceFace = false, screenWidth = .48, viewDistance = .65 } = {}) {
     this.element = element;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -20,8 +20,8 @@ export class PerspectiveScene {
     flash.position.set(-.12,.13,.8);
     this.scene.add(flash);
     this.camera = new THREE.PerspectiveCamera(45,1,.005,15);
-    this.width = .48;
-    this.eye = {x:0,y:0,z:.65};
+    this.width = screenWidth;
+    this.eye = {x:0,y:0,z:viewDistance};
     this.room = new THREE.Group();
     this.placeholder = new THREE.Group();
     this.content = new THREE.Group();

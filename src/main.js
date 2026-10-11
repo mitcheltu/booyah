@@ -4,9 +4,9 @@ import { FaceTracker } from './tracker.js';
 import { estimateEye } from './perspective.js';
 
 const $ = (id) => document.getElementById(id);
-const settings = { distance: .65, gain: 1, smoothing: 20, width: .48 };
+const settings = { distance: 1, gain: 1, smoothing: 20, width: .35 };
 let scene, baseline = null, latestSample = null, status = 'stopped', wantsCamera = false;
-let target = { x: 0, y: 0, z: .65 }, eye = { ...target };
+let target = { x: 0, y: 0, z: settings.distance }, eye = { ...target };
 let calibrationSamples = [];
 let toastTimer;
 
@@ -20,7 +20,10 @@ function message(text, isError = false, duration = 4500) {
 }
 
 try {
-  scene = new PerspectiveScene($('scene'), { centralModelUrl: `${import.meta.env.BASE_URL}models/central-person.glb`, enhanceFace: true });
+  scene = new PerspectiveScene($('scene'), {
+    centralModelUrl: `${import.meta.env.BASE_URL}models/central-person.glb`, enhanceFace: true,
+    screenWidth: settings.width, viewDistance: settings.distance,
+  });
   scene.ready?.catch((error) => { message(error.message || 'The scene could not load. Please reload.', true, 12000); });
 } catch (error) {
   $('scene-error').hidden = false;

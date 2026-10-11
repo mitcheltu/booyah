@@ -33,7 +33,7 @@ The four sliders below the tracking button control:
 - **Distance:** your eye-to-screen distance in centimeters. Changing it while tracking starts a new calibration.
 - **View width:** the measured physical width of the visible scene in centimeters, excluding browser sidebars.
 
-For the box to align with your real viewpoint, measure **View width** and eye-to-screen **Distance**, keep **Movement** at **1.0×**, then reset while centered. Recheck the visible width after changing the browser window or entering fullscreen. The defaults are 48 cm wide and 65 cm away; the browser cannot determine these physical measurements. Smoothing defaults to 20% to reduce the delay during movement.
+For the box to align with your real viewpoint, measure **View width** and eye-to-screen **Distance**, keep **Movement** at **1.0×**, then reset while centered. Recheck the visible width after changing the browser window or entering fullscreen. The defaults are 35 cm wide and 100 cm away, matching the supplied screen width and viewing distance. Use fullscreen for this calibration; in a smaller window, set the width to the visible scene's measured width. The rendered height follows the canvas aspect ratio. The browser cannot determine these physical measurements. Smoothing defaults to 20% to reduce the delay during movement.
 
 While the camera is running, a small mirrored live preview appears in the bottom-left corner, including in fullscreen. It shows the entire camera frame. Click **Disable head tracking** to release the camera and hide the preview. Connection and error messages appear briefly when needed.
 
